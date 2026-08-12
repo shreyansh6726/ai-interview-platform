@@ -1,1 +1,4 @@
-/ai-interview-platform
+node_modules/
+.env
+.next/
+dist/
