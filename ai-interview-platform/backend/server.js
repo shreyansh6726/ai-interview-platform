@@ -6,9 +6,9 @@ import resumeRoutes from "./routes/resume.js";
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-if (!process.env.ANTHROPIC_API_KEY) {
+if (!process.env.GROQ_API_KEY) {
   console.warn(
-    "⚠️  ANTHROPIC_API_KEY is not set. Add it to backend/.env before uploading a resume."
+    "⚠️  GROQ_API_KEY is not set. Add it to backend/.env before uploading a resume."
   );
 }
 
