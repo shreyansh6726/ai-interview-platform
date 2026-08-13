@@ -1,5 +1,6 @@
 const SESSION_KEY = "aiInterviewSessionId";
 const RESUME_DATA_KEY = "aiInterviewResumeData";
+const inFlightSessionFetches = new Map();
 
 function getSessionId() {
   return localStorage.getItem(SESSION_KEY);
@@ -49,11 +50,33 @@ async function uploadResume(file, targetRole) {
 }
 
 async function fetchResumeForSession(sessionId) {
-  const res = await fetch(`/api/resume/${sessionId}`);
-  if (!res.ok) return null;
-  const data = await res.json();
-  setCachedResumeData(data.resumeData);
-  return data;
+  if (!sessionId) return null;
+
+  if (inFlightSessionFetches.has(sessionId)) {
+    return inFlightSessionFetches.get(sessionId);
+  }
+
+  const request = (async () => {
+    const res = await fetch(`/api/resume/${sessionId}`);
+
+    if (res.status === 404) {
+      clearSession();
+      return null;
+    }
+
+    if (!res.ok) return null;
+
+    const data = await res.json();
+    setCachedResumeData(data.resumeData);
+    return data;
+  })();
+
+  inFlightSessionFetches.set(sessionId, request);
+  try {
+    return await request;
+  } finally {
+    inFlightSessionFetches.delete(sessionId);
+  }
 }
 
 export {

@@ -1,7 +1,7 @@
-import Anthropic from "@anthropic-ai/sdk";
-
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-const MODEL = "claude-sonnet-4-6";
+const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
+// llama-3.1-70b-versatile was retired by Groq. Keep this overrideable so the
+// model can be changed without editing code when Groq updates availability.
+const MODEL = process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
 
 // Strips markdown code fences if the model wraps JSON in ```json ... ```
 function cleanJson(text) {
@@ -9,18 +9,39 @@ function cleanJson(text) {
 }
 
 async function callClaudeJson(systemPrompt, userPrompt, maxTokens = 2000) {
-  const response = await anthropic.messages.create({
-    model: MODEL,
-    max_tokens: maxTokens,
-    system: systemPrompt,
-    messages: [{ role: "user", content: userPrompt }]
+  const apiKey = process.env.GROQ_API_KEY;
+  if (!apiKey) {
+    throw new Error("MISSING_GROQ_API_KEY");
+  }
+
+  const response = await fetch(GROQ_API_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`
+    },
+    body: JSON.stringify({
+      model: MODEL,
+      max_tokens: maxTokens,
+      temperature: 0.1,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt }
+      ]
+    })
   });
 
-  const textBlock = response.content.find((b) => b.type === "text");
-  if (!textBlock) throw new Error("NO_TEXT_RESPONSE");
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(`GROQ_API_ERROR: ${response.status} ${errorBody.slice(0, 1000)}`);
+  }
+
+  const payload = await response.json();
+  const text = payload?.choices?.[0]?.message?.content;
+  if (!text) throw new Error("NO_TEXT_RESPONSE");
 
   try {
-    return JSON.parse(cleanJson(textBlock.text));
+    return JSON.parse(cleanJson(text));
   } catch (e) {
     throw new Error("INVALID_JSON_FROM_MODEL");
   }

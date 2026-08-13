@@ -7,6 +7,25 @@ import { getOrCreateSession, updateSession, getSession } from "../session/sessio
 
 const router = express.Router();
 
+function buildFallbackParsedJson(rawText) {
+  const lines = rawText
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  const name = lines[0] || null;
+
+  return {
+    name,
+    education: [],
+    skills: [],
+    workExperience: [],
+    projects: [],
+    certifications: [],
+    achievements: []
+  };
+}
+
 // Multer: memory storage only — file buffer is never written to disk.
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -80,17 +99,15 @@ router.post("/upload", upload.single("resume"), async (req, res) => {
 
     // Step 2: structured extraction via Claude (with one retry on failure)
     const targetRole = req.body.targetRole || null;
-    let parsedJson;
+    let parsedJson = buildFallbackParsedJson(rawText);
+    let aiExtractionFailed = false;
     try {
       parsedJson = await extractResumeStructuredData(rawText);
     } catch (err) {
       try {
         parsedJson = await extractResumeStructuredData(rawText); // retry once
       } catch (err2) {
-        return res.status(502).json({
-          error: "AI_EXTRACTION_FAILED",
-          message: "We couldn't analyze your resume right now. Please try again in a moment."
-        });
+        aiExtractionFailed = true;
       }
     }
 
@@ -103,6 +120,7 @@ router.post("/upload", upload.single("resume"), async (req, res) => {
         atsResult = await scoreResumeATS(rawText, parsedJson, targetRole);
       } catch (err2) {
         // Degrade gracefully: still return parsed resume even if ATS scoring fails
+        console.error("ATS scoring failed after retry:", err2);
         atsResult = null;
       }
     }
@@ -115,6 +133,7 @@ router.post("/upload", upload.single("resume"), async (req, res) => {
       strengths: atsResult?.strengths ?? [],
       weaknesses: atsResult?.weaknesses ?? [],
       suggestions: atsResult?.suggestions ?? [],
+      aiExtractionFailed,
       atsScoringFailed: atsResult === null
     };
 
